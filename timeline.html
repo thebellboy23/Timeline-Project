@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/ico" href="file://favicon.ico">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chronos — Timeline Notes</title>
+<style>
+  :root {
+    --bg: #080b0f;
+    --bg2: #0d1117;
+    --surface: #111820;
+    --surface2: #162030;
+    --border: #1e2d3d;
+    --glow: #00d4ff;
+    --glow2: #7c3aed;
+    --glow3: #00ff9d;
+    --text: #c9d1d9;
+    --text-dim: #4a5568;
+    --text-bright: #e6edf3;
+    --danger: #ff4757;
+    --font: "Comic Sans MS", "Comic Sans", cursive;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    user-select: none;
+  }
+
+  /* ── Header ── */
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 58px;
+    background: linear-gradient(180deg, #080b0f 0%, rgba(8,11,15,0.85) 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 18px;
+    backdrop-filter: blur(12px);
+    gap: 12px;
+  }
+  #header h1 {
+    font-family: var(--font);
+    font-weight: bold;
+    font-size: 22px;
+    color: var(--glow);
+    text-shadow: 0 0 20px var(--glow);
+    flex: none;
+  }
+  #header .sep { flex: 1; }
+
+  #current-date-display {
+    font-size: 13px;
+    color: var(--glow3);
+    font-family: var(--font);
+    white-space: nowrap;
+  }
+
+  /* Search bar */
+  #search-wrap {
+    display: flex;
+    align-items: center;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #search-wrap:focus-within {
+    border-color: var(--glow);
+    box-shadow: 0 0 10px rgba(0,212,255,0.18);
+  }
+  #search-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-bright);
+    font-family: var(--font);
+    font-size: 14px;
+    padding: 5px 10px;
+    width: 190px;
+  }
+  #search-input::placeholder { color: var(--text-dim); }
+  #search-btn {
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border);
+    color: var(--glow);
+    padding: 5px 11px;
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 14px;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  #search-btn:hover { background: var(--surface); }
+
+  #zoom-display {
+    font-size: 13px;
+    color: var(--glow2);
+    font-family: var(--font);
+    min-width: 90px;
+    text-align: center;
+  }
+
+  .header-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 13px;
+    border-radius: 7px;
+    font-size: 14px;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .header-btn:hover {
+    border-color: var(--glow);
+    color: var(--glow);
+    box-shadow: 0 0 8px rgba(0,212,255,0.2);
+  }
+
+  /* ── Canvas Container ── */
+  #canvas-container {
+    position: fixed;
+    top: 58px; left: 0; right: 0; bottom: 26px;
+    overflow: hidden;
+    cursor: crosshair;
+  }
+  #timeline-canvas { position: absolute; top: 0; left: 0; }
+
+  /* ── Notes Layer ── */
+  #notes-layer {
+    position: absolute; 
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  /* ── Note Card ── */
+  .note-card {
+    position: absolute;
+    pointer-events: all;
+    min-width: 250px;
+    background: var(--surface);
+    border: 1.5px solid var(--glow);
+    border-radius: 12px;
+    box-shadow: 0 0 20px rgba(0,212,255,0.13), 0 4px 24px rgba(0,0,0,0.6);
+    transition: box-shadow 0.2s, opacity 0.2s;
+    overflow: hidden;
+    z-index: 10;
+  }
+  .note-card:hover {
+    box-shadow: 0 0 32px rgba(0,212,255,0.24), 0 8px 32px rgba(0,0,0,0.7);
+    z-index: 20;
+  }
+  .note-card.minimized .note-body { display: none; }
+  .note-card.minimized { width: auto; min-width: 250px; }
+  .note-card.dragging {
+    opacity: 0.93; cursor: grabbing !important; z-index: 999;
+    box-shadow: 0 0 44px rgba(0,212,255,0.38), 0 16px 48px rgba(0,0,0,0.8);
+  }
+
+  .note-header {
+    display: flex; align-items: center;
+    padding: 9px 11px; cursor: grab; gap: 7px;
+    border-bottom: 1px solid var(--border); min-height: 40px;
+  }
+  .note-card.minimized .note-header { border-bottom: none; }
+
+  .note-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--glow); box-shadow: 0 0 6px var(--glow); flex: none;
+  }
+  .note-actions { display: flex; gap: 4px; flex: none; }
+  .note-btn {
+    width: 24px; height: 24px; border: none; background: transparent;
+    cursor: pointer; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-family: var(--font);
+    transition: background 0.15s, color 0.15s; color: var(--text-dim);
+  }
+  .note-btn:hover { background: var(--surface2); color: var(--text-bright); }
+  .note-btn.delete:hover { color: var(--danger); background: rgba(255,71,87,0.1); }
+
+  .note-body { padding: 10px; }
+  .note-textarea {
+    min-width: 100%; max-width: 500px;
+    min-height: 88px; max-height: 320px;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 7px;
+    color: var(--text-bright); font-family: var(--font); font-size: 14px;
+    line-height: 1.65; padding: 9px 11px; 
+    resize: both;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .note-textarea:focus { border-color: var(--glow2); box-shadow: 0 0 10px rgba(124,58,237,0.2); }
+  .note-textarea::placeholder { color: var(--text-dim); }
+
+
+
+  /* ── Status Bar ── */
+  #statusbar {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 26px;
+    background: var(--bg2); border-top: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 16px; gap: 20px;
+    font-size: 13px; color: var(--text-dim); font-family: var(--font);
+  }
+  #statusbar .highlight { color: var(--glow3); }
+  #statusbar .sep2 { flex: 1; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 38px; left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: var(--surface2); border: 1px solid var(--glow); color: var(--glow);
+    padding: 8px 20px; border-radius: 20px; font-size: 14px; font-family: var(--font);
+    opacity: 0; transition: all 0.3s; pointer-events: none; z-index: 9999;
+    box-shadow: 0 0 20px rgba(0,212,255,0.2);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Scanline's */
+  #scanlines {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 200;
+    background: repeating-linear-gradient(
+      to bottom, transparent 0px, transparent 2px,
+      rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px
+    );
+    opacity: 0.35;
+  }
+
+  /* ── Context menu ── */
+  #ctx-menu {
+    position: fixed; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 9px; padding: 4px; z-index: 5000;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 16px rgba(0,212,255,0.08);
+    display: none; min-width: 175px;
+  }
+  #ctx-menu.visible { display: block; }
+  .ctx-item {
+    padding: 8px 13px; font-size: 14px; color: var(--text); cursor: pointer;
+    border-radius: 6px; font-family: var(--font);
+    transition: background 0.15s, color 0.15s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ctx-item:hover { background: var(--surface2); color: var(--glow); }
+  .ctx-item.danger:hover { color: var(--danger); background: rgba(255,71,87,0.08); }
+  .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+
+  /* ── Help overlay ── */
+  #help-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 8000;
+    backdrop-filter: blur(6px); align-items: center; justify-content: center;
+  }
+  #help-overlay.visible { display: flex; }
+  .help-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px 32px; max-width: 460px; width: 90%;
+    box-shadow: 0 0 40px rgba(0,212,255,0.1), 0 24px 64px rgba(0,0,0,0.6);
+  }
+  .help-box h2 { font-family: var(--font); font-size: 22px; color: var(--glow); text-shadow: 0 0 16px var(--glow); margin-bottom: 18px; }
+  .help-row { display: flex; gap: 14px; margin-bottom: 11px; align-items: flex-start; }
+  .help-key {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 5px;
+    padding: 3px 9px; font-size: 12px; color: var(--glow2); font-family: var(--font);
+    white-space: nowrap; flex: none;
+  }
+  .help-desc { font-size: 14px; color: var(--text); line-height: 1.5; }
+  .help-close {
+    margin-top: 22px; background: var(--glow); color: #000; border: none;
+    border-radius: 8px; padding: 9px 20px;
+    font-family: var(--font); font-weight: bold; font-size: 15px;
+    cursor: pointer; width: 100%; transition: opacity 0.2s;
+  }
+  .help-close:hover { opacity: 0.85; }
+
+  /* ── Search suggestions dropdown ── */
+  #search-suggestions {
+    position: fixed; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; z-index: 6000; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    display: none; max-height: 200px; overflow-y: auto;
+  }
+  #search-suggestions.visible { display: block; }
+  .sugg-item {
+    padding: 8px 13px; font-size: 13px; font-family: var(--font);
+    color: var(--text); cursor: pointer; transition: background 0.12s;
+  }
+  .sugg-item:hover { background: var(--surface2); color: var(--glow); }
+
+/* ─── Note Style ───*/
+.note-name-input {
+  background: transparent;
+  border: black;
+  outline: none;
+  color: var(--text-bright);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 2px 4px;
+  width: 100%;
+  flex: 1;
+  border-radius: 4px;
+}
+
+.note-name-input:hover{
+  background: transparent;
+  color: rgba(180,180,10,10);
+ }
+
+.note-name-input:focus {
+  background: rgb(17,24,32); 
+  color: white;
+}
+
+.note-name-input::placeholder {
+  color: white;
+}
+
+
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>CHRONOS</h1>
+  <div id="search-wrap">
+    <input id="search-input" type="text" placeholder="Jump to year/note" autocomplete="off" />
+    <button id="search-btn">Go →</button>
+  </div>
+  <div class="sep"></div>
+  <div id="zoom-display">ERA VIEW</div>
+  <div id="current-date-display">—</div>
+  <button class="header-btn" id="btn-today">Today</button>
+  <button class="header-btn" id="btn-help">Help</button>
+  <button class="header-btn" id="btn-clear">Clear All</button>
+</div>
+
+<div id="search-suggestions"></div>
+
+<div id="canvas-container">
+  <canvas id="timeline-canvas"></canvas>
+  <div id="notes-layer"></div>
+</div>
+
+<div id="statusbar">
+  <span>Double-click to add note</span>
+  <span class="highlight" id="status-notes">0 notes</span>
+  <span class="sep2"></span>
+  <span id="status-pos">—</span>
+  <span>Scroll to pan · Ctrl+Scroll to zoom</span>
+</div>
+
+<div id="toast"></div>
+<div id="scanlines"></div>
+
+<div id="ctx-menu">
+  <div class="ctx-item" id="ctx-add">＋ Add Note Here</div>
+  <div class="ctx-item" id="ctx-goto-today">◎ Jump to Today</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="ctx-clear">⚠ Clear All Notes</div>
+</div>
+
+<div id="help-overlay">
+  <div class="help-box">
+    <h2>// CHRONOS Help</h2>
+    <div class="help-row"><span class="help-key">Double-click</span><span class="help-desc">Create a note anchored to that point in time</span></div>
+    <div class="help-row"><span class="help-key">Scroll</span><span class="help-desc">Pan left/right — notes move with their year!</span></div>
+    <div class="help-row"><span class="help-key">Ctrl + Scroll</span><span class="help-desc">Zoom in and out on the timeline</span></div>
+    <div class="help-row"><span class="help-key">Drag header</span><span class="help-desc">Reposition a card vertically (stays linked to its year)</span></div>
+    <div class="help-row"><span class="help-key">— button</span><span class="help-desc">Minimize / expand a note card</span></div>
+    <div class="help-row"><span class="help-key">✕ button</span><span class="help-desc">Delete a note permanently</span></div>
+    <div class="help-row"><span class="help-key">Search bar</span><span class="help-desc">Type a year (e.g. 1969, 44 BCE) and press Go or Enter</span></div>
+    <div class="help-row"><span class="help-key">Right-click</span><span class="help-desc">Context menu for quick actions</span></div>
+    <p style="margin-top:14px;font-size:13px;color:var(--text-dim);line-height:1.6">All data is saved automatically in your browser. Nothing is sent to a server.</p>
+    <button class="help-close" id="help-close-btn">Got it!</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+// CHRONOS — Timeline Notes
+// Key change: notes are anchored to a year on the timeline.
+// Their screen X is computed from yearToX(note.year) every frame.
+// Only their vertical offset (offsetY) is user-adjustable.
+// ══════════════════════════════════════════════════════════════════
+
+const STORAGE_KEY = 'chronos_v3';
+const MIN_YEAR    = -300000;
+const NOW_YEAR    = new Date().getFullYear() + new Date().getMonth() / 12;
+const CARD_WIDTH  = 280;
+
+let state = {
+  centerYear: NOW_YEAR,
+  pxPerYear:  0.00005,
+  notes:      {},
+};
+
+const ZOOM_LEVELS = [
+  [0.0015, 'DECAMILLENNIUM'], 
+  [0.015,   'MILLENNIUM'], 
+  [0.15,     'CENTURY'], 
+  [17,      'DECADE'], 
+  [190,        'YEAR'],   // Matches your formatYear threshold for Month labels
+  [1900,      'MONTH'],  // Matches your formatYear threshold for Full Date labels
+  [8000,     'DAY']     // Matches the high-zoom threshold in your weekLabel/first function
+];
+
+// ── DOM refs ──────────────────────────────────────────────────────
+const container  = document.getElementById('canvas-container');
+const canvas     = document.getElementById('timeline-canvas');
+const canvasCtx  = canvas.getContext('2d');
+const notesLayer = document.getElementById('notes-layer');
+
+let W = 0, H = 0;
+const TL_FRAC = 0.5; // timeline at 50% of container height
+
+function resize() {
+  W = container.clientWidth;
+  H = container.clientHeight;
+  canvas.width  = W;
+  canvas.height = H;
+  renderAll();
+}
+
+// ── Coordinate math ───────────────────────────────────────────────
+function yearToX(year) { return W / 2 + (year - state.centerYear) * state.pxPerYear; }
+function xToYear(x)    { return state.centerYear + (x - W / 2) / state.pxPerYear; }
+function tlY()         { return H * TL_FRAC; }
+
+// ── Note screen coords (recomputed every frame from year) ─────────
+// ── Note screen coords (Now follows timeline exactly) ─────────
+function noteCardX(note) {
+  // Use the raw yearToX calculation without any Math.min/max clamping
+  // This centers the card on its specific year point
+  return yearToX(note.year) - (CARD_WIDTH / 2);
+}
+
+function noteCardY(note) {
+  // Use the fixed offset relative to the timeline line (tlY)
+  // This allows it to stay at a consistent height (e.g., above the line)
+  return tlY() + note.offsetY;
+}
+
+
+// ── Zoom label ────────────────────────────────────────────────────
+function getZoomLabel() {
+  for (let i = ZOOM_LEVELS.length - 1; i >= 0; i--)
+    if (state.pxPerYear >= ZOOM_LEVELS[i][0]) return ZOOM_LEVELS[i][1];
+  return 'Just Too Far';
+}
+
+// ── Tick configuration ────────────────────────────────────────────
+function getTickConfig() {
+  const p = state.pxPerYear;
+  if (p < 0.000008) return [50000000, 10000000, y=>`${Math.abs(y/1e6)}M ${y<0?'BCE':'CE'}`];
+  if (p < 0.00008)  return [5000000,  1000000,  y=>`${Math.abs(y/1e6)}M ${y<0?'BCE':'CE'}`];
+  if (p < 0.0008)   return [500000,   100000,   y=>`${Math.abs(y/1000)}K ${y<0?'BCE':'CE'}`];
+  if (p < 0.008)    return [50000,    10000,    y=>`${Math.abs(y/1000)}K ${y<0?'BCE':'CE'}`];
+  if (p < 0.08)     return [5000,     1000,     y=>`${Math.abs(y)} ${y<0?'BCE':'CE'}`];
+  if (p < 0.8)      return [500,      100,      y=>`${Math.abs(y)} ${y<0?'BCE':'CE'}`];
+  if (p < 8)        return [50,       10,       y=>`${Math.abs(y)} ${y<0?'BCE':'CE'}`];
+  if (p < 80)       return [10,       1,        y=>`${Math.abs(Math.round(y))} ${y<0?'BCE':'CE'}`];
+  if (p < 800)      return [1,        1/12,     y=>`${Math.abs(Math.round(y))} ${y<0?'BCE':'CE'}`];
+  if (p < 8000)     return [1/12,     1/52,     y=>monthLabel(y)];
+  return                   [1/52,     1/365,    y=>weekLabel(y)];
+}
+
+function monthLabel(y) {
+  const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // Convert fractional year to an actual date for accuracy
+  const msFromEpoch = (y - 1970) * 365.25 * 24 * 3600 * 1000;
+  const date = new Date(msFromEpoch);
+  return `${m[date.getMonth()]} ${date.getFullYear()}`;
+}
+function weekLabel(y) {
+  return new Date((y-1970)*365.25*86400*1000)
+    .toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+function formatYear(y) {
+  const p = state.pxPerYear;
+  if (p >= 8000) return new Date((y-1970)*365.25*86400*1000)
+    .toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
+  if (p >= 800)  return monthLabel(y)+' '+(y<0?'BCE':'CE');
+  return `${Math.round(Math.abs(y))} ${y<0?'BCE':'CE'}`;
+}
+function formatYearStatic(y) {
+  // FIXED: removed the erroneous +1/12 shift that was pushing labels one month forward
+  const yr = Math.floor(Math.abs(y));
+  return `${yr} ${y < 0 ? 'BCE' : 'CE'}`;
+}
+
+// ── Render everything ─────────────────────────────────────────────
+function renderAll() {
+  const ty = tlY();
+  canvasCtx.clearRect(0, 0, W, H);
+
+  // Subtle horizontal grid
+  canvasCtx.strokeStyle = 'rgba(30,45,61,0.22)';
+  canvasCtx.lineWidth = 1;
+  for (let y = 0; y < H; y += 60) {
+    canvasCtx.beginPath(); canvasCtx.moveTo(0,y); canvasCtx.lineTo(W,y); canvasCtx.stroke();
+  }
+
+  drawTicks(ty);
+  drawTimelineLine(ty);
+  drawNoteConnectors(ty);
+  drawTodayMarker(ty);
+  positionAllCards();   // ← move cards to match current pan/zoom
+  updateZoomDisplay();
+  updateStatusPos();
+}
+
+function drawTimelineLine(ty) {
+  [{w:14,a:0.03},{w:7,a:0.1},{w:2,a:0.55},{w:1,a:1}].forEach(g=>{
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(0,ty); canvasCtx.lineTo(W,ty);
+    canvasCtx.strokeStyle=`rgba(0,212,255,${g.a})`;
+    canvasCtx.lineWidth=g.w;
+    canvasCtx.stroke();
+  });
+}
+
+function drawTicks(ty) {
+  const [maj, min, labelFn] = getTickConfig();
+  const yL = xToYear(0), yR = xToYear(W);
+
+  canvasCtx.strokeStyle = 'rgba(0,212,255,0.14)';
+  canvasCtx.lineWidth = 1;
+  for (let y = Math.floor(yL/min)*min; y <= yR+min; y += min) {
+    const x = yearToX(y);
+    if (x<-2||x>W+2) continue;
+    canvasCtx.beginPath(); canvasCtx.moveTo(x,ty-5); canvasCtx.lineTo(x,ty+5); canvasCtx.stroke();
+  }
+
+  canvasCtx.font = '"Inter", "Segoe UI", sans-serif';
+  canvasCtx.textAlign = 'center';
+  for (let y = Math.floor(yL/maj)*maj; y <= yR+maj; y += maj) {
+    const x = yearToX(y);
+    if (x<-50||x>W+50) continue;
+
+    canvasCtx.strokeStyle = 'rgba(0,212,255,0.04)';
+    canvasCtx.lineWidth = 1;
+    canvasCtx.beginPath(); canvasCtx.moveTo(x,0); canvasCtx.lineTo(x,H); canvasCtx.stroke();
+
+    canvasCtx.strokeStyle = 'rgba(0,212,255,0.45)';
+    canvasCtx.lineWidth = 1;
+    canvasCtx.beginPath(); canvasCtx.moveTo(x,ty-12); canvasCtx.lineTo(x,ty+12); canvasCtx.stroke();
+
+    canvasCtx.fillStyle = '#5a7080';
+    canvasCtx.fillText(labelFn(y), x, ty+28);
+  }
+}
+
+function drawTodayMarker(ty) {
+  // 1. Get the current date and time
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  
+  // 2. Calculate the progress through the current year (0.0 to 1.0)
+  const startOfYear = new Date(currentYear, 0, 1);
+  const endOfYear = new Date(currentYear + 1, 0, 1);
+  const yearProgress = (now - startOfYear) / (endOfYear - startOfYear);
+  
+  // 3. Combine them into a decimal year (e.g., 2024.25 for April)
+  const decimalYear = currentYear + yearProgress;
+
+  // 4. Pass this dynamic value to your existing mapping function
+  const x = yearToX(decimalYear);
+  
+  if (x < 0 || x > W) return;
+
+  canvasCtx.strokeStyle = 'rgba(0,255,157,0.5)';
+  canvasCtx.lineWidth = 1;
+  canvasCtx.setLineDash([4,4]);
+  canvasCtx.beginPath(); 
+  canvasCtx.moveTo(x, ty - 70); 
+  canvasCtx.lineTo(x, ty + 70); 
+  canvasCtx.stroke();
+  canvasCtx.setLineDash([]);
+
+  canvasCtx.fillStyle = '#00ff9d';
+  canvasCtx.shadowColor = '#00ff9d'; 
+  canvasCtx.shadowBlur = 12;
+  canvasCtx.beginPath();
+  canvasCtx.moveTo(x, ty - 6); 
+  canvasCtx.lineTo(x + 6, ty + 0);
+  canvasCtx.lineTo(x, ty + 6);    
+  canvasCtx.lineTo(x - 6, ty + 0);
+  canvasCtx.closePath(); 
+  canvasCtx.fill();
+  canvasCtx.shadowBlur = 0;
+
+  canvasCtx.fillStyle = '#00ff9d';
+  canvasCtx.font = '16px "Inter", "Segoe UI", sans-serif';
+  canvasCtx.textAlign = 'center';
+  canvasCtx.fillText('TODAY', x, ty - 30);
+}
+
+
+function drawNoteConnectors(ty) {
+  Object.values(state.notes).forEach(note => {
+    const ax = yearToX(note.year);
+    if (ax<-5||ax>W+5) return;
+    const card = document.getElementById(`note-${note.id}`);
+    if (!card) return;
+
+    const cy = noteCardY(note);
+    const ch = card.offsetHeight || (note.minimized ? 40 : 145);
+    const isAbove = (cy + ch) < ty;
+    const connY   = isAbove ? cy + ch : cy;
+
+    // Anchor dot
+    canvasCtx.beginPath();
+    canvasCtx.arc(ax, ty, 6, 0, Math.PI*2);
+    canvasCtx.fillStyle = '#00d4ff';
+    canvasCtx.shadowColor = '#00d4ff'; canvasCtx.shadowBlur = 10;
+    canvasCtx.fill(); canvasCtx.shadowBlur = 0;
+
+    // Dashed connector
+    canvasCtx.strokeStyle = 'rgba(0,212,255,0.4)';
+    canvasCtx.lineWidth = 1.5;
+    canvasCtx.setLineDash([4,6]);
+    canvasCtx.beginPath(); canvasCtx.moveTo(ax, ty-0); canvasCtx.lineTo(ax, connY);
+    canvasCtx.stroke(); canvasCtx.setLineDash([]);
+  });
+}
+
+// ── Position all cards — called every frame ───────────────────────
+function positionAllCards() {
+  Object.values(state.notes).forEach(note => {
+    const card = document.getElementById(`note-${note.id}`);
+    if (!card) return;
+
+    const x = noteCardX(note);
+    const y = noteCardY(note);
+
+    card.style.left = x + 'px';
+    card.style.top  = y + 'px';
+
+  });
+}
+
+function updateZoomDisplay() {
+  document.getElementById('zoom-display').textContent = getZoomLabel();
+}
+let mouseX = 0;
+function updateStatusPos() {
+  document.getElementById('status-pos').textContent = formatYear(xToYear(mouseX || W/2));
+}
+
+// ── Note management ───────────────────────────────────────────────
+function genId() { return Math.random().toString(36).slice(2,10)+Date.now().toString(36); }
+
+function createNote(year, clickScreenY) {
+  const id = genId();
+  const isAbove = clickScreenY < tlY();
+  const note = {
+    id,
+    year,
+    text: '',
+    offsetY: isAbove ? -230 : 65, // vertical offset from timeline
+    minimized: false,
+    color: '#00d4ff',
+    createdAt: Date.now(),
+  };
+  state.notes[id] = note;
+  renderNoteCard(note);
+  saveState();
+  showToast('Note created!');
+  updateNoteCount();
+  renderAll();
+  setTimeout(() => { const ta = document.querySelector(`#note-${id} .note-textarea`); if(ta) ta.focus(); }, 60);
+}
+
+function renderNoteCard(note) {
+  document.getElementById(`note-${note.id}`)?.remove();
+
+  const card = document.createElement('div');
+  card.className = 'note-card' + (note.minimized ? ' minimized' : '');
+  card.id = `note-${note.id}`;
+  card.style.left = noteCardX(note) + 'px';
+  card.style.top  = noteCardY(note) + 'px';
+  card.style.borderColor = note.color;
+  card.style.boxShadow = `0 0 20px ${note.color}22, 0 4px 24px rgba(0,0,0,0.6)`;
+
+
+// Inside your render function where you create the card
+card.innerHTML = `
+    <div class="note-header">
+      <div class="note-dot" style="background:${note.color};box-shadow:0 0 7px ${note.color}"></div>
+     <div id="note-name-input" style="background:rgba(10,10,10,10)"></div>
+      <input  class="note-name-input" type="text" value="${note.title || formatYear(note.year)}"  placeholder="Rename" autocomplete="off"/>
+      <div class="note-actions">
+        <button class="note-btn minimize-btn" title="Minimize">—</button>
+        <button class="note-btn delete note-del-btn" title="Delete">✕</button>
+      </div>
+    </div>
+    <div class="note-body">
+      <textarea class="note-textarea" placeholder="Write your note here...">${escHtml(note.text)}</textarea>
+    </div>
+  `;
+
+// --- ADD THESE LISTENERS RIGHT HERE ---
+const nameInput = card.querySelector('.note-name-input');
+
+// 1. Update the note object when the user finishes typing
+nameInput.addEventListener('change', () => {
+  note.title = nameInput.value;
+  if (typeof saveNotes === 'function') saveNotes(); 
+});
+
+// 2. Prevent dragging the card while you are trying to type/click the name
+nameInput.addEventListener('mousedown', (e) => e.stopPropagation());
+
+  card.querySelector('.minimize-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    note.minimized = !note.minimized;
+    card.classList.toggle('minimized', note.minimized);
+    saveState(); renderAll();
+  });
+  card.querySelector('.note-del-btn').addEventListener('click', e => {
+    e.stopPropagation(); deleteNote(note.id);
+  });
+
+  const ta = card.querySelector('.note-textarea');
+  ta.addEventListener('input', () => { note.text = ta.value; saveState(); });
+  ta.addEventListener('mousedown', e => e.stopPropagation());
+  ta.addEventListener('click',     e => e.stopPropagation());
+
+  makeDraggable(card, note);
+  notesLayer.appendChild(card);
+}
+
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function deleteNote(id) {
+  const card = document.getElementById(`note-${id}`);
+  if (card) { card.style.opacity='0'; card.style.transform='scale(0.9)'; card.style.transition='all 0.2s'; setTimeout(()=>card.remove(),200); }
+  delete state.notes[id];
+  saveState(); updateNoteCount();
+  showToast('Note deleted');
+  setTimeout(renderAll, 250);
+}
+
+// Drag: only adjusts offsetY (vertical relative to timeline).
+// X position is always derived from note.year — it follows on pan.
+function makeDraggable(card, note) {
+  let dragging=false, startMouseY, startOffsetY;
+
+  card.querySelector('.note-header').addEventListener('mousedown', e => {
+    if (e.target.classList.contains('note-btn')) return;
+    dragging=true; startMouseY=e.clientY; startOffsetY=note.offsetY;
+    card.classList.add('dragging'); e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const proposed = startOffsetY + (e.clientY - startMouseY);
+    const minOff = 62 - tlY();
+    const maxOff = H - 32 - tlY();
+    note.offsetY = Math.max(minOff, Math.min(maxOff, proposed));
+    card.style.top = noteCardY(note) + 'px';
+    // X stays pinned to year — update it too in case we're mid-frame
+    card.style.left = noteCardX(note) + 'px';
+    renderAll();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging=false; card.classList.remove('dragging'); saveState();
+  });
+}
+
+function updateNoteCount() {
+  const n = Object.keys(state.notes).length;
+  document.getElementById('status-notes').textContent = `${n} note${n!==1?'s':''}`;
+}
+
+function renderAllNoteCards() {
+  notesLayer.innerHTML = '';
+  Object.values(state.notes).forEach(renderNoteCard);
+  updateNoteCount();
+}
+
+// ── Persistence ───────────────────────────────────────────────────
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      centerYear: state.centerYear, pxPerYear: state.pxPerYear, notes: state.notes,
+    }));
+  } catch(e) { console.warn('Save failed',e); }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (d.centerYear !== undefined) state.centerYear = d.centerYear;
+    if (d.pxPerYear  !== undefined) state.pxPerYear  = d.pxPerYear;
+    if (d.notes) {
+      // Migrate old-format notes that used cardX/cardY instead of offsetY
+      Object.values(d.notes).forEach(n => {
+        if (n.offsetY === undefined) { n.offsetY = -165; delete n.cardX; delete n.cardY; }
+      });
+      state.notes = d.notes;
+    }
+  } catch(e) { console.warn('Load failed',e); }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+// ── Pan / zoom ────────────────────────────────────────────────────
+let velocity=0, inertiaFrame;
+
+function applyInertia() {
+  if (Math.abs(velocity)<0.1) { velocity=0; return; }
+  panBy(velocity); velocity*=0.9;
+  inertiaFrame = requestAnimationFrame(applyInertia);
+}
+function panBy(pxDelta) {
+  state.centerYear -= pxDelta / state.pxPerYear;
+  state.centerYear = Math.max(MIN_YEAR, Math.min(NOW_YEAR+100, state.centerYear));
+  renderAll();
+}
+
+const MIN_PPY=0.000003, MAX_PPY=18000;
+function zoomAt(x, factor) {
+  const yAtX = xToYear(x);
+  state.pxPerYear = Math.max(MIN_PPY, Math.min(MAX_PPY, state.pxPerYear*factor));
+  state.centerYear = yAtX - (x-W/2)/state.pxPerYear;
+  state.centerYear = Math.max(MIN_YEAR, Math.min(NOW_YEAR+100, state.centerYear));
+  renderAll(); saveState();
+}
+
+function navigateToYear(targetYear, targetPPY) {
+  const sy=state.centerYear, sp=state.pxPerYear;
+  const ey=targetYear, ep=targetPPY||sp;
+  const dur=700, t0=performance.now();
+  function anim(t) {
+    const p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,3);
+    state.centerYear=sy+(ey-sy)*e; state.pxPerYear=sp+(ep-sp)*e;
+    renderAll();
+    if (p<1) requestAnimationFrame(anim);
+    else { state.centerYear=ey; state.pxPerYear=ep; saveState(); renderAll(); }
+  }
+  requestAnimationFrame(anim);
+}
+
+// ── Search ────────────────────────────────────────────────────────
+function parseSearchYear(raw) {
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+  const bcM  = s.match(/^([\d,]+)\s*(bce?|bc)$/);
+  const ceM  = s.match(/^([\d,]+)\s*(ce|ad)?$/);
+  const negM = s.match(/^-([\d,]+)$/);
+  if (bcM)  return -parseInt(bcM[1].replace(/,/g,''));
+  if (negM) return -parseInt(negM[1].replace(/,/g,''));
+  if (ceM)  return  parseInt(ceM[1].replace(/,/g,''));
+  return null;
+}
+
+function doSearch() {
+  const raw = document.getElementById('search-input').value.trim();
+  if (!raw) return;
+
+  // 1. Try to see if it's a Year first
+  const yr = parseSearchYear(raw);
+
+  if (yr !== null) {
+    if (yr < MIN_YEAR || yr > NOW_YEAR + 500) {
+      showToast('Year out of range!');
+      return;
+    }
+    navigateToYear(yr, state.pxPerYear);
+    showToast(`Jumped to ${formatYearStatic(yr)}`);
+  } else {
+    // 2. If it's not a year, try to find a Note with a matching Title
+    const match = Object.values(state.notes).find(n => 
+      (n.title || "").toLowerCase() === raw.toLowerCase()
+    );
+
+    if (match) {
+      navigateToYear(match.year, yr, state.pxPerYear);
+      showToast(`Found Note: ${match.title}`);
+    } else {
+      // 3. Only show error if BOTH year and title search fail
+      showToast('No year or note title matched.');
+      return;
+    }
+  }
+
+  hideSuggestions();
+  document.getElementById('search-input').blur();
+}
+
+
+function buildSuggestions(raw) {
+  const s = raw.trim().toLowerCase();
+  if (!s) return [];
+  
+  const num = s.replace(/\D/g,'');
+
+  return Object.values(state.notes).filter(n => {
+    // 1. Get the custom title or the year string
+    const title = (n.title || "").toLowerCase();
+    const yearStr = formatYearStatic(n.year).toLowerCase();
+    
+    // 2. Match against title, year string, or raw numbers
+    return title.includes(s) || 
+           yearStr.includes(s) || 
+           (num && String(Math.floor(Math.abs(n.year))).includes(num)); // Use floor to avoid year-jump
+  })
+  .slice(0, 6)
+  .map(n => ({ 
+    // Show the custom name if it exists, otherwise show the year
+    label: n.title ? `Note: ${n.title}` : `Note: ${formatYearStatic(n.year)}`, 
+    year: n.year 
+  }));
+}
+
+
+function showSuggestions(items) {
+  const box  = document.getElementById('search-suggestions');
+  const rect = document.getElementById('search-wrap').getBoundingClientRect();
+  box.style.left  = rect.left+'px';
+  box.style.top   = (rect.bottom+4)+'px';
+  box.style.width = rect.width+'px';
+  box.innerHTML = '';
+  items.forEach(item => {
+    const d = document.createElement('div');
+    d.className='sugg-item'; d.textContent=item.label;
+    d.addEventListener('mousedown', e => {
+      e.preventDefault(); navigateToYear(item.year,30); hideSuggestions();
+      document.getElementById('search-input').value='';
+    });
+    box.appendChild(d);
+  });
+  box.classList.toggle('visible', items.length>0);
+}
+function hideSuggestions() { document.getElementById('search-suggestions').classList.remove('visible'); }
+
+document.getElementById('search-input').addEventListener('input',  e=>showSuggestions(buildSuggestions(e.target.value)));
+document.getElementById('search-input').addEventListener('keydown', e=>{ if(e.key==='Enter'){e.preventDefault();doSearch();} if(e.key==='Escape') hideSuggestions(); });
+document.getElementById('search-input').addEventListener('blur',    ()=>setTimeout(hideSuggestions,150));
+document.getElementById('search-btn').addEventListener('click', doSearch);
+
+// ── Mouse events ──────────────────────────────────────────────────
+let isPanning=false, panStartX=0, panStartYear=0;
+let lastClickTime=0, lastClickX=0, lastClickY=0;
+
+container.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey||e.metaKey) {
+    cancelAnimationFrame(inertiaFrame);
+    zoomAt(e.offsetX, e.deltaY<0 ? 1.12 : 0.89);
+  } else {
+    cancelAnimationFrame(inertiaFrame);
+    const d = e.deltaX!==0 ? e.deltaX : e.deltaY;
+    velocity = d*0.4; panBy(d*0.5);
+    clearTimeout(window._is);
+    window._is = setTimeout(()=>{ inertiaFrame=requestAnimationFrame(applyInertia); }, 50);
+  }
+}, {passive:false});
+
+container.addEventListener('mousemove', e => {
+  mouseX = e.offsetX; updateStatusPos();
+  if (isPanning) {
+    state.centerYear = panStartYear - (e.clientX-panStartX)/state.pxPerYear;
+    state.centerYear = Math.max(MIN_YEAR, Math.min(NOW_YEAR+100, state.centerYear));
+    renderAll();
+  }
+});
+
+container.addEventListener('mousedown', e => {
+  if (e.button!==0) return;
+  const now=Date.now(), dx=Math.abs(e.clientX-lastClickX), dy=Math.abs(e.clientY-lastClickY);
+  if (now-lastClickTime<320 && dx<10 && dy<10) {
+    createNote(xToYear(e.offsetX), e.offsetY);
+    lastClickTime=0; isPanning=false; return;
+  }
+  lastClickTime=now; lastClickX=e.clientX; lastClickY=e.clientY;
+  isPanning=true; panStartX=e.clientX; panStartYear=state.centerYear;
+  cancelAnimationFrame(inertiaFrame); velocity=0;
+});
+
+document.addEventListener('mouseup', ()=>{ if(!isPanning) return; isPanning=false; saveState(); });
+container.addEventListener('dblclick', e=>e.preventDefault());
+
+// ── Context menu ──────────────────────────────────────────────────
+let ctxYear=0;
+container.addEventListener('contextmenu', e => {
+  e.preventDefault(); ctxYear=xToYear(e.offsetX);
+  const m=document.getElementById('ctx-menu');
+  m.style.left=e.clientX+'px'; m.style.top=e.clientY+'px'; m.classList.add('visible');
+});
+document.addEventListener('click', ()=>document.getElementById('ctx-menu').classList.remove('visible'));
+document.getElementById('ctx-add').addEventListener('click', ()=>createNote(ctxYear, tlY()-80));
+document.getElementById('ctx-goto-today').addEventListener('click', jumpToToday);
+document.getElementById('ctx-clear').addEventListener('click', clearAllNotes);
+
+// ── Header buttons ────────────────────────────────────────────────
+document.getElementById('btn-today').addEventListener('click', jumpToToday);
+document.getElementById('btn-clear').addEventListener('click', clearAllNotes);
+document.getElementById('btn-help').addEventListener('click', ()=>document.getElementById('help-overlay').classList.add('visible'));
+document.getElementById('help-close-btn').addEventListener('click', ()=>document.getElementById('help-overlay').classList.remove('visible'));
+document.getElementById('help-overlay').addEventListener('click', e=>{ if(e.target===e.currentTarget) e.currentTarget.classList.remove('visible'); });
+
+function jumpToToday() { navigateToYear(NOW_YEAR, Math.max(state.pxPerYear, 3)); showToast('Jumped to today'); }
+
+function clearAllNotes() {
+  if (!Object.keys(state.notes).length) return;
+  if (!confirm('Delete all notes? This cannot be undone.')) return;
+  state.notes={}; notesLayer.innerHTML=''; saveState(); updateNoteCount(); renderAll();
+  showToast('All notes cleared');
+}
+
+// ── Current date ──────────────────────────────────────────────────
+function updateCurrentDate() {
+  document.getElementById('current-date-display').textContent =
+    new Date().toLocaleDateString('en-US',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+}
+updateCurrentDate(); setInterval(updateCurrentDate, 60000);
+
+// ── Keyboard shortcuts ────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName==='TEXTAREA'||e.target.tagName==='INPUT') return;
+  if (e.key==='ArrowLeft')  { cancelAnimationFrame(inertiaFrame); panBy(-50); saveState(); }
+  if (e.key==='ArrowRight') { cancelAnimationFrame(inertiaFrame); panBy(50);  saveState(); }
+  if ((e.key==='='||e.key==='+')&&(e.ctrlKey||e.metaKey)) { e.preventDefault(); zoomAt(W/2,1.3); }
+  if (e.key==='-'&&(e.ctrlKey||e.metaKey)) { e.preventDefault(); zoomAt(W/2,0.77); }
+  if (e.key==='t'||e.key==='T') jumpToToday();
+  if (e.key==='Escape') document.getElementById('help-overlay').classList.remove('visible');
+  if (e.key==='?')      document.getElementById('help-overlay').classList.add('visible');
+});
+
+// ── Touch ─────────────────────────────────────────────────────────
+let lastPinchDist=0, touchPanStart=null;
+container.addEventListener('touchstart', e=>{ e.preventDefault();
+  if (e.touches.length===1) { touchPanStart={x:e.touches[0].clientX, cy:state.centerYear}; cancelAnimationFrame(inertiaFrame); }
+  else if (e.touches.length===2) lastPinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+},{passive:false});
+container.addEventListener('touchmove', e=>{ e.preventDefault();
+  if (e.touches.length===1&&touchPanStart) { state.centerYear=touchPanStart.cy-(e.touches[0].clientX-touchPanStart.x)/state.pxPerYear; renderAll(); }
+  else if (e.touches.length===2) {
+    const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+    zoomAt(mx-container.getBoundingClientRect().left, dist/lastPinchDist);
+    lastPinchDist=dist;
+  }
+},{passive:false});
+container.addEventListener('touchend', ()=>{ touchPanStart=null; saveState(); });
+
+// ── Init ──────────────────────────────────────────────────────────
+loadState();
+resize();
+renderAllNoteCards();
+renderAll();
+window.addEventListener('resize', resize);
+
+if (!localStorage.getItem(STORAGE_KEY)) {
+  state.pxPerYear=0.00005; state.centerYear=1000; renderAll();
+}
+if (!localStorage.getItem('chronos_v3_visited')) {
+  localStorage.setItem('chronos_v3_visited','1');
+  setTimeout(()=>document.getElementById('help-overlay').classList.add('visible'), 500);
+}
+</script>
+</body>
+</html>
